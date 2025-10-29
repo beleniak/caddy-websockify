@@ -18,13 +18,14 @@ package websockify
 import (
 	"encoding/json"
 	"fmt"
-	"golang.org/x/net/context"
 	"net/http"
 	"net/textproto"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"golang.org/x/net/context"
 
 	"github.com/spf13/cobra"
 	"go.uber.org/zap"
@@ -34,6 +35,7 @@ import (
 	"github.com/caddyserver/caddy/v2"
 	"github.com/caddyserver/caddy/v2/caddyconfig"
 	"github.com/caddyserver/caddy/v2/caddyconfig/caddyfile"
+	"github.com/caddyserver/caddy/v2/caddyconfig/httpcaddyfile"
 	"github.com/caddyserver/caddy/v2/modules/caddyhttp"
 	"github.com/gorilla/websocket"
 	N "github.com/hadi77ir/wsproxy/pkg/net"
@@ -42,6 +44,7 @@ import (
 
 func init() {
 	caddy.RegisterModule(new(ProxyHandler))
+	httpcaddyfile.RegisterHandlerDirective("websockify", parseCaddyfile)
 	caddycmd.RegisterCommand(caddycmd.Command{
 		Name:  "websockify",
 		Usage: `[--listen <addr>] [--access-log] [--debug] [--header "Field: value"] <upstream> [<upstream>]`,
@@ -73,6 +76,26 @@ Response headers may be added using the --header flag for each header field.
 			cmd.RunE = caddycmd.WrapCommandFuncForCobra(cmdWebsockify)
 		},
 	})
+}
+
+func parseCaddyfile(h httpcaddyfile.Helper) (caddyhttp.MiddlewareHandler, error) {
+    var ph ProxyHandler
+    for h.Next() {
+        for h.NextBlock(0) {
+            switch h.Val() {
+            case "backend", "upstream":
+								// Collect all tokens on this line into a temporary slice
+                args := h.RemainingArgs()
+                if len(args) == 0 {
+                    return nil, h.ArgErr()
+                }
+                ph.Upstream = append(ph.Upstream, args...)
+            default:
+                return nil, h.Errf("unrecognized subdirective %s", h.Val())
+            }
+        }
+    }
+    return &ph, nil
 }
 
 // ProxyHandler implements a simple responder for Websocket requests which
@@ -281,9 +304,10 @@ func cmdWebsockify(fl caddycmd.Flags) (int, error) {
 		handler := &ProxyHandler{
 			Headers: hdr,
 		}
-		for _, upstream := range upstreams {
-			handler.Upstream = append(handler.Upstream, upstream)
-		}
+		handler.Upstream = append(handler.Upstream, upstreams...)
+		//for _, upstream := range upstreams {
+		//	handler.Upstream = append(handler.Upstream, upstream)
+		//}
 
 		handlers = append(handlers, caddyconfig.JSONModuleObject(handler, "handler", "websockify", nil))
 		route := caddyhttp.Route{HandlersRaw: handlers}
