@@ -1,6 +1,6 @@
 module github.com/beleniak/caddy-websockify
 
-go 1.19
+go 1.25
 
 require (
 	github.com/gorilla/websocket v1.5.0
